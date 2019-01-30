@@ -18,6 +18,11 @@
 #define LOG_TAG "android.hardware.power-service.pixel-libperfmgr"
 
 #include "Power.h"
+#include <linux/input.h>
+
+constexpr char kWakeupEventNode[] = "/dev/input/event2";
+constexpr int kWakeupModeOff = 4;
+constexpr int kWakeupModeOn = 5;
 
 #include <mutex>
 
@@ -140,7 +145,16 @@ ndk::ScopedAStatus Power::setMode(Mode type, bool enabled) {
             }
             [[fallthrough]];
         case Mode::DOUBLE_TAP_TO_WAKE:
+            {
+            int fd = open(kWakeupEventNode, O_RDWR);
+            struct input_event ev;
+            ev.type = EV_SYN;
+            ev.code = SYN_CONFIG;
+            ev.value = enabled ? kWakeupModeOn : kWakeupModeOff;
+            write(fd, &ev, sizeof(ev));
+            close(fd);
             [[fallthrough]];
+            }
         case Mode::FIXED_PERFORMANCE:
             [[fallthrough]];
         case Mode::EXPENSIVE_RENDERING:
