@@ -20,7 +20,6 @@
 #include "Power.h"
 #include <linux/input.h>
 
-constexpr char kWakeupEventNode[] = "/dev/input/event2";
 constexpr int kWakeupModeOff = 4;
 constexpr int kWakeupModeOn = 5;
 
@@ -91,6 +90,39 @@ Power::Power(std::shared_ptr<HintManager> hm, std::shared_ptr<DisplayLowPower> d
     ALOGI("PowerHAL ready to process hints");
 }
 
+int open_ts_input() {
+    int fd = -1;
+    DIR *dir = opendir("/dev/input");
+
+    if (dir != NULL) {
+        struct dirent *ent;
+
+        while ((ent = readdir(dir)) != NULL) {
+            if (ent->d_type == DT_CHR) {
+                char absolute_path[PATH_MAX] = {0};
+                char name[80] = {0};
+
+                strcpy(absolute_path, "/dev/input/");
+                strcat(absolute_path, ent->d_name);
+
+                fd = open(absolute_path, O_RDWR);
+                if (ioctl(fd, EVIOCGNAME(sizeof(name) - 1), &name) > 0) {
+                    if (strcmp(name, "fts_ts") == 0 || strcmp(name, "goodix_ts") == 0 ||
+                            strcmp(name, "NVTCapacitiveTouchScreen") == 0)
+                        break;
+                }
+
+                close(fd);
+                fd = -1;
+            }
+        }
+
+        closedir(dir);
+    }
+
+    return fd;
+}
+
 ndk::ScopedAStatus Power::setMode(Mode type, bool enabled) {
     LOG(DEBUG) << "Power setMode: " << toString(type) << " to: " << enabled;
     ATRACE_INT(toString(type).c_str(), enabled);
@@ -146,7 +178,11 @@ ndk::ScopedAStatus Power::setMode(Mode type, bool enabled) {
             [[fallthrough]];
         case Mode::DOUBLE_TAP_TO_WAKE:
             {
-            int fd = open(kWakeupEventNode, O_RDWR);
+            int fd = open_ts_input();
+            if (fd == -1) {
+                ALOGW("DT2W won't work because no supported touchscreen input devices were found");
+                return ndk::ScopedAStatus::fromExceptionCode(EX_UNSUPPORTED_OPERATION);
+            }
             struct input_event ev;
             ev.type = EV_SYN;
             ev.code = SYN_CONFIG;
