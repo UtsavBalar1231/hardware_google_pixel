@@ -127,6 +127,21 @@ ndk::ScopedAStatus Power::setMode(Mode type, bool enabled) {
     LOG(DEBUG) << "Power setMode: " << toString(type) << " to: " << enabled;
     ATRACE_INT(toString(type).c_str(), enabled);
     switch (type) {
+        case Mode::DOUBLE_TAP_TO_WAKE:
+            {
+            int fd = open_ts_input();
+            if (fd == -1) {
+                ALOGW("DT2W won't work because no supported touchscreen input devices were found");
+                return ndk::ScopedAStatus::fromExceptionCode(EX_UNSUPPORTED_OPERATION);
+            }
+            struct input_event ev;
+            ev.type = EV_SYN;
+            ev.code = SYN_CONFIG;
+            ev.value = enabled ? kWakeupModeOn : kWakeupModeOff;
+            write(fd, &ev, sizeof(ev));
+            close(fd);
+            break;
+            }
         case Mode::LOW_POWER:
             mDisplayLowPower->SetDisplayLowPower(enabled);
             if (enabled) {
@@ -176,21 +191,6 @@ ndk::ScopedAStatus Power::setMode(Mode type, bool enabled) {
                 break;
             }
             [[fallthrough]];
-        case Mode::DOUBLE_TAP_TO_WAKE:
-            {
-            int fd = open_ts_input();
-            if (fd == -1) {
-                ALOGW("DT2W won't work because no supported touchscreen input devices were found");
-                return ndk::ScopedAStatus::fromExceptionCode(EX_UNSUPPORTED_OPERATION);
-            }
-            struct input_event ev;
-            ev.type = EV_SYN;
-            ev.code = SYN_CONFIG;
-            ev.value = enabled ? kWakeupModeOn : kWakeupModeOff;
-            write(fd, &ev, sizeof(ev));
-            close(fd);
-            break;
-            }
         case Mode::FIXED_PERFORMANCE:
             [[fallthrough]];
         case Mode::EXPENSIVE_RENDERING:
